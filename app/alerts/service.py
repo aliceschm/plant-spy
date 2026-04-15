@@ -1,12 +1,16 @@
+import uuid
+
 from app.alerts.models import (
     ALERT_STATUS_ACKNOWLEDGED,
-    ALERT_STATUS_OPEN,
     ALERT_STATUS_RESOLVED,
     Alert,
 )
-from app.alerts.repository import load_alerts, load_open_alerts, update_alert_status
+from app.alerts.repository import create_alert, load_alerts, load_open_alerts, update_alert_status
 from app.hierarchy.service import HierarchyService
+from app.shared.event_bus import event_bus
+from app.shared.events import AnomalyDetected
 from app.views.alert_view import AlertView
+
 
 class AlertService:
     def __init__(self) -> None:
@@ -23,7 +27,18 @@ class AlertService:
 
     def resolve_alert(self, alert_id: str) -> bool:
         return update_alert_status(alert_id, ALERT_STATUS_RESOLVED)
-    
+
+    def create_alert_from_anomaly(self, event: AnomalyDetected) -> None:
+        create_alert(
+            alert_id=str(uuid.uuid4()),
+            component_id=event.component_id,
+            reading_id=event.reading_id,
+            message=event.message,
+        )
+
+    def register_event_handlers(self) -> None:
+        event_bus.subscribe(AnomalyDetected, self.create_alert_from_anomaly)
+
     def get_alert_views(self) -> list[AlertView]:
         alerts = self.load_alerts()
 
@@ -45,7 +60,7 @@ class AlertService:
             )
 
         return views
-    
+
     def get_alert_views_by_node(self, node_id: str) -> list[AlertView]:
         component_ids = self.hierarchy_service.get_component_ids_in_subtree(
             node_id
