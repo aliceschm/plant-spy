@@ -5,7 +5,13 @@ from app.alerts.models import (
     ALERT_STATUS_RESOLVED,
     Alert,
 )
-from app.alerts.repository import create_alert, load_alerts, load_open_alerts, update_alert_status
+from app.alerts.repository import (
+    create_alert,
+    exists_open_alert_for_component,
+    load_alerts,
+    load_open_alerts,
+    update_alert_status,
+)
 from app.hierarchy.service import HierarchyService
 from app.shared.event_bus import event_bus
 from app.shared.events import AnomalyDetected
@@ -13,8 +19,12 @@ from app.views.alert_view import AlertView
 
 
 class AlertService:
+    """Application service for alert lifecycle, event reactions, and alert queries."""
+
     def __init__(self) -> None:
         self.hierarchy_service = HierarchyService()
+
+    # Core alert lifecycle
 
     def load_alerts(self) -> list[Alert]:
         return load_alerts()
@@ -28,7 +38,12 @@ class AlertService:
     def resolve_alert(self, alert_id: str) -> bool:
         return update_alert_status(alert_id, ALERT_STATUS_RESOLVED)
 
-    def create_alert_from_anomaly(self, event: AnomalyDetected) -> None:
+    # Event handlers
+
+    def handle_anomaly_detected(self, event: AnomalyDetected) -> None:
+        if exists_open_alert_for_component(event.component_id):
+            return
+
         create_alert(
             alert_id=str(uuid.uuid4()),
             component_id=event.component_id,
@@ -37,7 +52,9 @@ class AlertService:
         )
 
     def register_event_handlers(self) -> None:
-        event_bus.subscribe(AnomalyDetected, self.create_alert_from_anomaly)
+        event_bus.subscribe(AnomalyDetected, self.handle_anomaly_detected)
+
+    # Read models / contextual queries
 
     def get_alert_views(self) -> list[AlertView]:
         alerts = self.load_alerts()
