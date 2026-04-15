@@ -1,9 +1,12 @@
 import uuid
 
-from app.alerts.repository import create_alert, exists_open_alert_for_component
+from app.alerts.repository import exists_open_alert_for_component
 from app.hierarchy.service import HierarchyService
 from app.processing.rules import build_alert_message, is_anomalous
 from app.readings.repository import load_latest_readings_by_component
+from app.shared.event_bus import event_bus
+from app.shared.events import AnomalyDetected
+
 
 class ProcessingService:
     def __init__(self) -> None:
@@ -24,15 +27,15 @@ class ProcessingService:
             if not is_anomalous(component.sensor_type, reading):
                 continue
 
-            # NEW: prevent duplicates
             if exists_open_alert_for_component(component.id):
                 continue
 
             message = build_alert_message(component.sensor_type, reading)
 
-            create_alert(
-                alert_id=str(uuid.uuid4()),
-                component_id=component.id,
-                reading_id=reading.id,
-                message=message,
+            event_bus.publish(
+                AnomalyDetected(
+                    component_id=component.id,
+                    reading_id=reading.id,
+                    message=message,
+                )
             )
