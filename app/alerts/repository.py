@@ -109,3 +109,27 @@ def update_alert_status(alert_id: str, new_status: str) -> bool:
         conn.commit()
 
     return updated_rows > 0
+
+def get_alert_by_id(alert_id: str) -> Alert | None:
+    query = """
+        SELECT id, component_id, reading_id, message, status, created_at
+        FROM alerts
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (alert_id,))
+            row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return Alert(
+        id=row[0],
+        component_id=row[1],
+        reading_id=row[2],
+        message=row[3],
+        status=row[4],
+        created_at=row[5],
+    )
