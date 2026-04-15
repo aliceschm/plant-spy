@@ -7,14 +7,17 @@ from app.alerts.models import (
 )
 from app.alerts.repository import (
     create_alert,
-    exists_open_alert_for_component,
+    get_alert_by_id,
+    get_open_alert_by_component_and_anomaly,
     load_alerts,
     load_open_alerts,
+    update_alert_details,
     update_alert_status,
 )
+from app.alerts.rules import build_alert_message, calculate_severity
 from app.hierarchy.service import HierarchyService
 from app.shared.event_bus import event_bus
-from app.shared.events import AnomalyDetected, AlertCreated
+from app.shared.events import AlertCreated, AnomalyDetected
 from app.views.alert_view import AlertView
 
 
@@ -40,36 +43,48 @@ class AlertService:
 
     # Event handlers
 
-    def build_alert_message(self, event: AnomalyDetected) -> str:
-        if event.sensor_type == "vibration":
-            return f"High vibration detected: {event.value}"
-
-        if event.sensor_type == "energy":
-            return f"High energy consumption detected: {event.value}"
-
-        return f"Anomalous reading detected: {event.value}"
-
     def handle_anomaly_detected(self, event: AnomalyDetected) -> None:
-        if exists_open_alert_for_component(event.component_id):
-            return
-
-        alert_id = str(uuid.uuid4())
-
-        message = self.build_alert_message(event)
-
-        create_alert(
-            alert_id=alert_id,
-            component_id=event.component_id,
-            reading_id=event.reading_id,
-            message=message,
+        existing_alert = get_open_alert_by_component_and_anomaly(
+            event.component_id,
+            event.anomaly_type,
         )
 
-        event_bus.publish(
-            AlertCreated(
+        if existing_alert is None:
+            occurrence_count = 1
+            severity = calculate_severity(occurrence_count)
+            message = build_alert_message(event.anomaly_type, event.value)
+            alert_id = str(uuid.uuid4())
+
+            create_alert(
                 alert_id=alert_id,
                 component_id=event.component_id,
                 reading_id=event.reading_id,
+                anomaly_type=event.anomaly_type,
+                severity=severity,
+                occurrence_count=occurrence_count,
+                message=message,
             )
+
+            event_bus.publish(
+                AlertCreated(
+                    alert_id=alert_id,
+                    component_id=event.component_id,
+                    reading_id=event.reading_id,
+                    severity=severity,
+                )
+            )
+            return
+
+        occurrence_count = existing_alert.occurrence_count + 1
+        severity = calculate_severity(occurrence_count)
+        message = build_alert_message(event.anomaly_type, event.value)
+
+        update_alert_details(
+            alert_id=existing_alert.id,
+            reading_id=event.reading_id,
+            severity=severity,
+            occurrence_count=occurrence_count,
+            message=message,
         )
 
     def register_event_handlers(self) -> None:
@@ -79,7 +94,6 @@ class AlertService:
 
     def get_alert_views(self) -> list[AlertView]:
         alerts = self.load_alerts()
-
         views = []
 
         for alert in alerts:
@@ -105,7 +119,6 @@ class AlertService:
         )
 
         alerts = self.load_alerts()
-
         views = []
 
         for alert in alerts:

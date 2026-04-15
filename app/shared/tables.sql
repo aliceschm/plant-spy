@@ -36,9 +36,12 @@ CREATE TABLE readings (
 );
 
 CREATE TABLE alerts (
-    id TEXT PRIMARY KEY,
-    component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
-    reading_id TEXT NOT NULL REFERENCES readings(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
+    component_id TEXT NOT NULL REFERENCES components(id),
+    reading_id TEXT NOT NULL REFERENCES readings(id),
+    anomaly_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
     message TEXT NOT NULL,
     status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()

@@ -13,11 +13,13 @@ class ReadingRecorded(Event):
 class AnomalyDetected(Event):
     component_id: str
     reading_id: str
-    sensor_type: str
+    anomaly_type: str
     value: float
+
 
 @dataclass(frozen=True)
 class AlertCreated(Event):
     alert_id: str
     component_id: str
     reading_id: str
+    severity: str
