@@ -1,6 +1,7 @@
 from app.alerts.models import (
     ALERT_STATUS_OPEN,
     Alert,
+    AnomalyState,
 )
 from app.shared.db import get_connection
 
@@ -252,3 +253,104 @@ def get_alert_by_id(alert_id: str) -> Alert | None:
         status=row[7],
         created_at=row[8],
     )
+
+def get_anomaly_state(
+    component_id: str,
+    anomaly_type: str,
+) -> AnomalyState | None:
+    query = """
+        SELECT
+            component_id,
+            anomaly_type,
+            occurrence_count,
+            last_reading_id,
+            alert_id,
+            created_at,
+            updated_at
+        FROM anomaly_states
+        WHERE component_id = %s
+          AND anomaly_type = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (component_id, anomaly_type))
+            row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return AnomalyState(
+        component_id=row[0],
+        anomaly_type=row[1],
+        occurrence_count=row[2],
+        last_reading_id=row[3],
+        alert_id=row[4],
+        created_at=row[5],
+        updated_at=row[6],
+    )
+
+
+def create_anomaly_state(
+    component_id: str,
+    anomaly_type: str,
+    occurrence_count: int,
+    last_reading_id: str,
+) -> None:
+    query = """
+        INSERT INTO anomaly_states (
+            component_id,
+            anomaly_type,
+            occurrence_count,
+            last_reading_id
+        )
+        VALUES (%s, %s, %s, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    component_id,
+                    anomaly_type,
+                    occurrence_count,
+                    last_reading_id,
+                ),
+            )
+        conn.commit()
+
+
+def update_anomaly_state(
+    component_id: str,
+    anomaly_type: str,
+    occurrence_count: int,
+    last_reading_id: str,
+    alert_id: str | None,
+) -> bool:
+    query = """
+        UPDATE anomaly_states
+        SET occurrence_count = %s,
+            last_reading_id = %s,
+            alert_id = %s,
+            updated_at = NOW()
+        WHERE component_id = %s
+          AND anomaly_type = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    occurrence_count,
+                    last_reading_id,
+                    alert_id,
+                    component_id,
+                    anomaly_type,
+                ),
+            )
+            updated_rows = cur.rowcount
+        conn.commit()
+
+    return updated_rows > 0

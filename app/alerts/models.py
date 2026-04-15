@@ -22,3 +22,14 @@ class Alert:
     message: str
     status: str
     created_at: datetime
+
+
+@dataclass
+class AnomalyState:
+    component_id: str
+    anomaly_type: str
+    occurrence_count: int
+    last_reading_id: str
+    alert_id: str | None
+    created_at: datetime
+    updated_at: datetime

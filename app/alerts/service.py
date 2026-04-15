@@ -7,14 +7,20 @@ from app.alerts.models import (
 )
 from app.alerts.repository import (
     create_alert,
+    create_anomaly_state,
     get_alert_by_id,
-    get_open_alert_by_component_and_anomaly,
+    get_anomaly_state,
     load_alerts,
     load_open_alerts,
     update_alert_details,
     update_alert_status,
+    update_anomaly_state,
 )
-from app.alerts.rules import build_alert_message, calculate_severity
+from app.alerts.rules import (
+    build_alert_message,
+    calculate_severity,
+    should_create_alert,
+)
 from app.hierarchy.service import HierarchyService
 from app.shared.event_bus import event_bus
 from app.shared.events import AlertCreated, AnomalyDetected
@@ -22,7 +28,7 @@ from app.views.alert_view import AlertView
 
 
 class AlertService:
-    """Application service for alert lifecycle, event reactions, and alert queries."""
+    """Application service for alert lifecycle, anomaly recurrence, and alert queries."""
 
     def __init__(self) -> None:
         self.hierarchy_service = HierarchyService()
@@ -44,14 +50,34 @@ class AlertService:
     # Event handlers
 
     def handle_anomaly_detected(self, event: AnomalyDetected) -> None:
-        existing_alert = get_open_alert_by_component_and_anomaly(
+        anomaly_state = get_anomaly_state(
             event.component_id,
             event.anomaly_type,
         )
 
-        if existing_alert is None:
-            occurrence_count = 1
-            severity = calculate_severity(occurrence_count)
+        if anomaly_state is None:
+            create_anomaly_state(
+                component_id=event.component_id,
+                anomaly_type=event.anomaly_type,
+                occurrence_count=1,
+                last_reading_id=event.reading_id,
+            )
+            return
+
+        new_occurrence_count = anomaly_state.occurrence_count + 1
+
+        if anomaly_state.alert_id is None:
+            if not should_create_alert(new_occurrence_count):
+                update_anomaly_state(
+                    component_id=event.component_id,
+                    anomaly_type=event.anomaly_type,
+                    occurrence_count=new_occurrence_count,
+                    last_reading_id=event.reading_id,
+                    alert_id=None,
+                )
+                return
+
+            severity = calculate_severity(new_occurrence_count)
             message = build_alert_message(event.anomaly_type, event.value)
             alert_id = str(uuid.uuid4())
 
@@ -61,8 +87,16 @@ class AlertService:
                 reading_id=event.reading_id,
                 anomaly_type=event.anomaly_type,
                 severity=severity,
-                occurrence_count=occurrence_count,
+                occurrence_count=new_occurrence_count,
                 message=message,
+            )
+
+            update_anomaly_state(
+                component_id=event.component_id,
+                anomaly_type=event.anomaly_type,
+                occurrence_count=new_occurrence_count,
+                last_reading_id=event.reading_id,
+                alert_id=alert_id,
             )
 
             event_bus.publish(
@@ -75,16 +109,23 @@ class AlertService:
             )
             return
 
-        occurrence_count = existing_alert.occurrence_count + 1
-        severity = calculate_severity(occurrence_count)
+        severity = calculate_severity(new_occurrence_count)
         message = build_alert_message(event.anomaly_type, event.value)
 
         update_alert_details(
-            alert_id=existing_alert.id,
+            alert_id=anomaly_state.alert_id,
             reading_id=event.reading_id,
             severity=severity,
-            occurrence_count=occurrence_count,
+            occurrence_count=new_occurrence_count,
             message=message,
+        )
+
+        update_anomaly_state(
+            component_id=event.component_id,
+            anomaly_type=event.anomaly_type,
+            occurrence_count=new_occurrence_count,
+            last_reading_id=event.reading_id,
+            alert_id=anomaly_state.alert_id,
         )
 
     def register_event_handlers(self) -> None:

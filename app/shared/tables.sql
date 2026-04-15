@@ -51,6 +51,17 @@ ALTER TABLE alerts
 ADD CONSTRAINT alerts_status_check
 CHECK (status IN ('open', 'acknowledged', 'resolved'));
 
+CREATE TABLE anomaly_states (
+    component_id TEXT NOT NULL REFERENCES components(id),
+    anomaly_type TEXT NOT NULL,
+    occurrence_count INTEGER NOT NULL DEFAULT 0,
+    last_reading_id TEXT NOT NULL REFERENCES readings(id),
+    alert_id UUID NULL REFERENCES alerts(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (component_id, anomaly_type)
+);
+
 CREATE TABLE work_orders (
     id TEXT PRIMARY KEY,
     alert_id TEXT NOT NULL UNIQUE REFERENCES alerts(id) ON DELETE CASCADE,
