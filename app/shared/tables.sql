@@ -1,0 +1,62 @@
+
+CREATE TABLE locations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    parent_id TEXT NULL REFERENCES locations(id) ON DELETE SET NULL
+);
+
+CREATE TABLE assets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    location_id TEXT NULL REFERENCES locations(id) ON DELETE SET NULL,
+    parent_id TEXT NULL REFERENCES assets(id) ON DELETE SET NULL
+);
+
+CREATE TABLE components (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    parent_id TEXT NULL,
+    sensor_type TEXT NOT NULL,
+    status TEXT NOT NULL
+);
+
+ALTER TABLE components
+ADD CONSTRAINT components_sensor_type_check
+CHECK (sensor_type IN ('vibration', 'energy'));
+
+ALTER TABLE components
+ADD CONSTRAINT components_status_check
+CHECK (status IN ('operating', 'alert'));
+
+CREATE TABLE readings (
+    id TEXT PRIMARY KEY,
+    component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+    recorded_at TIMESTAMP NOT NULL,
+    value DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE alerts (
+    id TEXT PRIMARY KEY,
+    component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+    reading_id TEXT NOT NULL REFERENCES readings(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE alerts
+ADD CONSTRAINT alerts_status_check
+CHECK (status IN ('open', 'acknowledged', 'resolved'));
+
+CREATE TABLE work_orders (
+    id TEXT PRIMARY KEY,
+    alert_id TEXT NOT NULL UNIQUE REFERENCES alerts(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE work_orders
+ADD CONSTRAINT work_orders_status_check
+CHECK (status IN ('open', 'in_progress', 'done', 'canceled'));
