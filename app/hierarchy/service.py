@@ -1,6 +1,6 @@
+from app.hierarchy.models import Component, TreeNode
 from app.hierarchy.repository import load_assets, load_components, load_locations
 from app.hierarchy.tree import AssetTree
-from app.hierarchy.models import TreeNode
 
 
 class HierarchyService:
@@ -11,3 +11,6 @@ class HierarchyService:
 
         tree = AssetTree(locations, assets, components)
         return tree.build_tree()
+
+    def load_components(self) -> list[Component]:
+        return load_components()
