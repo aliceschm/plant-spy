@@ -23,7 +23,7 @@ from app.alerts.rules import (
 )
 from app.hierarchy.service import HierarchyService
 from app.shared.event_bus import event_bus
-from app.shared.events import AlertCreated, AnomalyDetected
+from app.shared.events import AlertCreated, AnomalyDetected, AlertSeverityChanged
 from app.views.alert_view import AlertView
 
 
@@ -77,16 +77,19 @@ class AlertService:
                 )
                 return
 
-            severity = calculate_severity(new_occurrence_count)
-            message = build_alert_message(event.anomaly_type, event.value)
-            alert_id = str(uuid.uuid4())
+            current_alert = get_alert_by_id(anomaly_state.alert_id)
 
-            create_alert(
-                alert_id=alert_id,
-                component_id=event.component_id,
+            if current_alert is None:
+                return
+
+            new_severity = calculate_severity(new_occurrence_count)
+            message = build_alert_message(event.anomaly_type, event.value)
+            severity_changed = current_alert.severity != new_severity
+
+            update_alert_details(
+                alert_id=anomaly_state.alert_id,
                 reading_id=event.reading_id,
-                anomaly_type=event.anomaly_type,
-                severity=severity,
+                severity=new_severity,
                 occurrence_count=new_occurrence_count,
                 message=message,
             )
@@ -96,8 +99,18 @@ class AlertService:
                 anomaly_type=event.anomaly_type,
                 occurrence_count=new_occurrence_count,
                 last_reading_id=event.reading_id,
-                alert_id=alert_id,
+                alert_id=anomaly_state.alert_id,
             )
+
+            if severity_changed:
+                event_bus.publish(
+                    AlertSeverityChanged(
+                        alert_id=current_alert.id,
+                        component_id=current_alert.component_id,
+                        reading_id=event.reading_id,
+                        severity=new_severity,
+                    )
+                )
 
             event_bus.publish(
                 AlertCreated(
