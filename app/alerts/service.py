@@ -14,7 +14,7 @@ from app.alerts.repository import (
 )
 from app.hierarchy.service import HierarchyService
 from app.shared.event_bus import event_bus
-from app.shared.events import AnomalyDetected
+from app.shared.events import AnomalyDetected, AlertCreated
 from app.views.alert_view import AlertView
 
 
@@ -53,13 +53,23 @@ class AlertService:
         if exists_open_alert_for_component(event.component_id):
             return
 
+        alert_id = str(uuid.uuid4())
+
         message = self.build_alert_message(event)
 
         create_alert(
-            alert_id=str(uuid.uuid4()),
+            alert_id=alert_id,
             component_id=event.component_id,
             reading_id=event.reading_id,
             message=message,
+        )
+
+        event_bus.publish(
+            AlertCreated(
+                alert_id=alert_id,
+                component_id=event.component_id,
+                reading_id=event.reading_id,
+            )
         )
 
     def register_event_handlers(self) -> None:
