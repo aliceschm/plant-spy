@@ -2,7 +2,11 @@ import uuid
 from datetime import datetime
 
 from app.readings.models import Reading
-from app.readings.repository import load_readings, load_latest_readings_by_component, save_reading
+from app.readings.repository import (
+    load_latest_readings_by_component,
+    load_readings,
+    save_reading,
+)
 from app.shared.event_bus import event_bus
 from app.shared.events import ReadingRecorded
 
