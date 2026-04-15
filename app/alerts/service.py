@@ -45,3 +45,32 @@ class AlertService:
             )
 
         return views
+    
+    def get_alert_views_by_node(self, node_id: str) -> list[AlertView]:
+        component_ids = self.hierarchy_service.get_component_ids_in_subtree(
+            node_id
+        )
+
+        alerts = self.load_alerts()
+
+        views = []
+
+        for alert in alerts:
+            if alert.component_id not in component_ids:
+                continue
+
+            path = self.hierarchy_service.get_path_string_for_node(
+                alert.component_id
+            )
+
+            views.append(
+                AlertView(
+                    alert_id=alert.id,
+                    component_id=alert.component_id,
+                    message=alert.message,
+                    status=alert.status,
+                    path=path,
+                )
+            )
+
+        return views
