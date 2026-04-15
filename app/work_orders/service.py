@@ -2,6 +2,8 @@ import uuid
 
 from app.alerts.repository import get_alert_by_id
 from app.hierarchy.service import HierarchyService
+from app.shared.event_bus import event_bus
+from app.shared.events import AlertCreated, AlertSeverityChanged
 from app.views.work_order_view import WorkOrderView
 from app.work_orders.models import (
     WORK_ORDER_STATUS_CANCELED,
@@ -15,14 +17,30 @@ from app.work_orders.repository import (
     load_work_orders,
     update_work_order_status,
 )
+from app.work_orders.rules import should_auto_create_work_order
 
 
 class WorkOrderService:
+    """Application service for work-order lifecycle, auto-creation, and work-order queries."""
+
     def __init__(self) -> None:
         self.hierarchy_service = HierarchyService()
 
+    # Core work-order lifecycle
+
     def load_work_orders(self) -> list[WorkOrder]:
         return load_work_orders()
+
+    def start_work_order(self, work_order_id: str) -> bool:
+        return update_work_order_status(work_order_id, WORK_ORDER_STATUS_IN_PROGRESS)
+
+    def complete_work_order(self, work_order_id: str) -> bool:
+        return update_work_order_status(work_order_id, WORK_ORDER_STATUS_DONE)
+
+    def cancel_work_order(self, work_order_id: str) -> bool:
+        return update_work_order_status(work_order_id, WORK_ORDER_STATUS_CANCELED)
+
+    # Work-order creation
 
     def create_from_alert(self, alert_id: str) -> bool:
         alert = get_alert_by_id(alert_id)
@@ -41,14 +59,23 @@ class WorkOrderService:
         )
         return True
 
-    def start_work_order(self, work_order_id: str) -> bool:
-        return update_work_order_status(work_order_id, WORK_ORDER_STATUS_IN_PROGRESS)
+    def handle_alert_created(self, event: AlertCreated) -> None:
+        if not should_auto_create_work_order(event.severity):
+            return
 
-    def complete_work_order(self, work_order_id: str) -> bool:
-        return update_work_order_status(work_order_id, WORK_ORDER_STATUS_DONE)
+        self.create_from_alert(event.alert_id)
 
-    def cancel_work_order(self, work_order_id: str) -> bool:
-        return update_work_order_status(work_order_id, WORK_ORDER_STATUS_CANCELED)
+    def handle_alert_severity_changed(self, event: AlertSeverityChanged) -> None:
+        if not should_auto_create_work_order(event.severity):
+            return
+
+        self.create_from_alert(event.alert_id)
+
+    def register_event_handlers(self) -> None:
+        event_bus.subscribe(AlertCreated, self.handle_alert_created)
+        event_bus.subscribe(AlertSeverityChanged, self.handle_alert_severity_changed)
+
+    # Read models / contextual queries
 
     def get_work_order_views(self) -> list[WorkOrderView]:
         work_orders = self.load_work_orders()
