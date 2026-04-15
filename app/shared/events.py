@@ -23,3 +23,11 @@ class AlertCreated(Event):
     component_id: str
     reading_id: str
     severity: str
+
+
+@dataclass(frozen=True)
+class AlertSeverityChanged(Event):
+    alert_id: str
+    component_id: str
+    reading_id: str
+    severity: str
