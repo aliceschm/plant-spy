@@ -68,3 +68,25 @@ def save_reading(reading: Reading) -> None:
                 ),
             )
         conn.commit()
+
+def load_reading_by_id(reading_id: str) -> Reading | None:
+    query = """
+        SELECT id, component_id, recorded_at, value
+        FROM readings
+        WHERE id = %s;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (reading_id,))
+            row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return Reading(
+        id=row[0],
+        component_id=row[1],
+        recorded_at=row[2],
+        value=row[3],
+    )
