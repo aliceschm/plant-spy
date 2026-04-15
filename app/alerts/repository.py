@@ -48,3 +48,19 @@ def load_alerts() -> list[Alert]:
         )
         for row in rows
     ]
+
+def exists_open_alert_for_component(component_id: str) -> bool:
+    query = """
+        SELECT 1
+        FROM alerts
+        WHERE component_id = %s
+          AND status = 'open'
+        LIMIT 1;
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (component_id,))
+            result = cur.fetchone()
+
+    return result is not None
