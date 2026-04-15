@@ -1,5 +1,5 @@
 from app.hierarchy.service import HierarchyService
-from app.processing.rules import build_alert_message, is_anomalous
+from app.processing.rules import is_anomalous
 from app.readings.repository import load_reading_by_id
 from app.shared.event_bus import event_bus
 from app.shared.events import AnomalyDetected, ReadingRecorded
@@ -25,13 +25,12 @@ class ProcessingService:
         if not is_anomalous(component.sensor_type, reading):
             return
 
-        message = build_alert_message(component.sensor_type, reading)
-
         event_bus.publish(
             AnomalyDetected(
                 component_id=component.id,
                 reading_id=reading.id,
-                message=message,
+                sensor_type=component.sensor_type,
+                value=reading.value,
             )
         )
 

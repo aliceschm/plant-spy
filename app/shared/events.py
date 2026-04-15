@@ -13,4 +13,5 @@ class ReadingRecorded(Event):
 class AnomalyDetected(Event):
     component_id: str
     reading_id: str
-    message: str
+    sensor_type: str
+    value: float

@@ -40,15 +40,26 @@ class AlertService:
 
     # Event handlers
 
+    def build_alert_message(self, event: AnomalyDetected) -> str:
+        if event.sensor_type == "vibration":
+            return f"High vibration detected: {event.value}"
+
+        if event.sensor_type == "energy":
+            return f"High energy consumption detected: {event.value}"
+
+        return f"Anomalous reading detected: {event.value}"
+
     def handle_anomaly_detected(self, event: AnomalyDetected) -> None:
         if exists_open_alert_for_component(event.component_id):
             return
+
+        message = self.build_alert_message(event)
 
         create_alert(
             alert_id=str(uuid.uuid4()),
             component_id=event.component_id,
             reading_id=event.reading_id,
-            message=event.message,
+            message=message,
         )
 
     def register_event_handlers(self) -> None:
