@@ -2,7 +2,7 @@
 
 Plant Spy is a backend simulation of an industrial monitoring system inspired by real-world platforms.
 
-The project is designed as a **modular monolith with event-driven communication**, focusing on how different parts of a monitoring system interact through domain events rather than direct service orchestration.
+The project is designed as a **modular monolith with event-driven communication using a pub/sub pattern**, where modules publish events and react to them instead of directly calling each other.
 
 ---
 
@@ -18,8 +18,8 @@ This system models the lifecycle of industrial monitoring:
 
 The goal is to demonstrate:
 - event-driven design (without external brokers)
+- pub/sub communication between modules
 - clear module boundaries
-- realistic domain behavior (recurrence, escalation, automation)
 
 ---
 
@@ -30,12 +30,10 @@ Plant Spy follows a **modular monolith + in-memory EventBus** approach.
 Each module has a single responsibility:
 
 - **Hierarchy** → structure (locations, assets, components)
-- **Readings** → ingestion of sensor data
-- **Processing** → anomaly detection
-- **Alerts** → recurrence tracking and alert lifecycle
-- **Work Orders** → operational actions based on alerts
-
-Communication between modules happens via events.
+- **Readings** → ingestion of sensor data (publishes events)
+- **Processing** → anomaly detection (subscribes + publishes)
+- **Alerts** → recurrence tracking and alert lifecycle (subscribes + publishes)
+- **Work Orders** → operational actions (subscribes)
 
 ---
 
