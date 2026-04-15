@@ -33,8 +33,6 @@ class AlertService:
     def __init__(self) -> None:
         self.hierarchy_service = HierarchyService()
 
-    # Core alert lifecycle
-
     def load_alerts(self) -> list[Alert]:
         return load_alerts()
 
@@ -46,8 +44,6 @@ class AlertService:
 
     def resolve_alert(self, alert_id: str) -> bool:
         return update_alert_status(alert_id, ALERT_STATUS_RESOLVED)
-
-    # Event handlers
 
     def handle_anomaly_detected(self, event: AnomalyDetected) -> None:
         anomaly_state = get_anomaly_state(
@@ -66,6 +62,7 @@ class AlertService:
 
         new_occurrence_count = anomaly_state.occurrence_count + 1
 
+        # No alert yet: keep tracking recurrence until threshold is reached
         if anomaly_state.alert_id is None:
             if not should_create_alert(new_occurrence_count):
                 update_anomaly_state(
@@ -77,19 +74,16 @@ class AlertService:
                 )
                 return
 
-            current_alert = get_alert_by_id(anomaly_state.alert_id)
-
-            if current_alert is None:
-                return
-
-            new_severity = calculate_severity(new_occurrence_count)
+            alert_id = str(uuid.uuid4())
+            severity = calculate_severity(new_occurrence_count)
             message = build_alert_message(event.anomaly_type, event.value)
-            severity_changed = current_alert.severity != new_severity
 
-            update_alert_details(
-                alert_id=anomaly_state.alert_id,
+            create_alert(
+                alert_id=alert_id,
+                component_id=event.component_id,
                 reading_id=event.reading_id,
-                severity=new_severity,
+                anomaly_type=event.anomaly_type,
+                severity=severity,
                 occurrence_count=new_occurrence_count,
                 message=message,
             )
@@ -99,18 +93,8 @@ class AlertService:
                 anomaly_type=event.anomaly_type,
                 occurrence_count=new_occurrence_count,
                 last_reading_id=event.reading_id,
-                alert_id=anomaly_state.alert_id,
+                alert_id=alert_id,
             )
-
-            if severity_changed:
-                event_bus.publish(
-                    AlertSeverityChanged(
-                        alert_id=current_alert.id,
-                        component_id=current_alert.component_id,
-                        reading_id=event.reading_id,
-                        severity=new_severity,
-                    )
-                )
 
             event_bus.publish(
                 AlertCreated(
@@ -122,13 +106,20 @@ class AlertService:
             )
             return
 
-        severity = calculate_severity(new_occurrence_count)
+        # Alert already exists: update it and publish severity change if needed
+        current_alert = get_alert_by_id(anomaly_state.alert_id)
+
+        if current_alert is None:
+            return
+
+        new_severity = calculate_severity(new_occurrence_count)
         message = build_alert_message(event.anomaly_type, event.value)
+        severity_changed = current_alert.severity != new_severity
 
         update_alert_details(
-            alert_id=anomaly_state.alert_id,
+            alert_id=current_alert.id,
             reading_id=event.reading_id,
-            severity=severity,
+            severity=new_severity,
             occurrence_count=new_occurrence_count,
             message=message,
         )
@@ -138,13 +129,21 @@ class AlertService:
             anomaly_type=event.anomaly_type,
             occurrence_count=new_occurrence_count,
             last_reading_id=event.reading_id,
-            alert_id=anomaly_state.alert_id,
+            alert_id=current_alert.id,
         )
+
+        if severity_changed:
+            event_bus.publish(
+                AlertSeverityChanged(
+                    alert_id=current_alert.id,
+                    component_id=current_alert.component_id,
+                    reading_id=event.reading_id,
+                    severity=new_severity,
+                )
+            )
 
     def register_event_handlers(self) -> None:
         event_bus.subscribe(AnomalyDetected, self.handle_anomaly_detected)
-
-    # Read models / contextual queries
 
     def get_alert_views(self) -> list[AlertView]:
         alerts = self.load_alerts()
