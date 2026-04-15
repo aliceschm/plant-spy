@@ -49,3 +49,22 @@ def load_latest_readings_by_component() -> list[Reading]:
         )
         for row in rows
     ]
+
+def save_reading(reading: Reading) -> None:
+    query = """
+        INSERT INTO readings (id, component_id, recorded_at, value)
+        VALUES (%s, %s, %s, %s);
+    """
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    reading.id,
+                    reading.component_id,
+                    reading.recorded_at,
+                    reading.value,
+                ),
+            )
+        conn.commit()
