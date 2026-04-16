@@ -1,4 +1,3 @@
-
 CREATE TABLE locations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -29,16 +28,19 @@ ADD CONSTRAINT components_status_check
 CHECK (status IN ('operating', 'alert'));
 
 CREATE TABLE readings (
-    id TEXT PRIMARY KEY,
+    id UUID PRIMARY KEY,
     component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
     recorded_at TIMESTAMP NOT NULL,
     value DOUBLE PRECISION NOT NULL
 );
 
 CREATE TABLE alerts (
-    id TEXT PRIMARY KEY,
-    component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
-    reading_id TEXT NOT NULL REFERENCES readings(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
+    component_id TEXT NOT NULL REFERENCES components(id),
+    reading_id UUID NOT NULL REFERENCES readings(id),
+    anomaly_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
     message TEXT NOT NULL,
     status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -48,9 +50,20 @@ ALTER TABLE alerts
 ADD CONSTRAINT alerts_status_check
 CHECK (status IN ('open', 'acknowledged', 'resolved'));
 
+CREATE TABLE anomaly_states (
+    component_id TEXT NOT NULL REFERENCES components(id),
+    anomaly_type TEXT NOT NULL,
+    occurrence_count INTEGER NOT NULL DEFAULT 0,
+    last_reading_id UUID NOT NULL REFERENCES readings(id),
+    alert_id UUID NULL REFERENCES alerts(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (component_id, anomaly_type)
+);
+
 CREATE TABLE work_orders (
-    id TEXT PRIMARY KEY,
-    alert_id TEXT NOT NULL UNIQUE REFERENCES alerts(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY,
+    alert_id UUID NOT NULL UNIQUE REFERENCES alerts(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     status TEXT NOT NULL,

@@ -1,14 +1,35 @@
+import uuid
+
 from app.alerts.models import (
     ALERT_STATUS_ACKNOWLEDGED,
-    ALERT_STATUS_OPEN,
     ALERT_STATUS_RESOLVED,
     Alert,
 )
-from app.alerts.repository import load_alerts, load_open_alerts, update_alert_status
+from app.alerts.repository import (
+    create_alert,
+    create_anomaly_state,
+    get_alert_by_id,
+    get_anomaly_state,
+    load_alerts,
+    load_open_alerts,
+    update_alert_details,
+    update_alert_status,
+    update_anomaly_state,
+)
+from app.alerts.rules import (
+    build_alert_message,
+    calculate_severity,
+    should_create_alert,
+)
 from app.hierarchy.service import HierarchyService
+from app.shared.event_bus import event_bus
+from app.shared.events import AlertCreated, AnomalyDetected, AlertSeverityChanged
 from app.views.alert_view import AlertView
 
+
 class AlertService:
+    """Application service for alert lifecycle, anomaly recurrence, and alert queries."""
+
     def __init__(self) -> None:
         self.hierarchy_service = HierarchyService()
 
@@ -23,10 +44,109 @@ class AlertService:
 
     def resolve_alert(self, alert_id: str) -> bool:
         return update_alert_status(alert_id, ALERT_STATUS_RESOLVED)
-    
+
+    def handle_anomaly_detected(self, event: AnomalyDetected) -> None:
+        anomaly_state = get_anomaly_state(
+            event.component_id,
+            event.anomaly_type,
+        )
+
+        if anomaly_state is None:
+            create_anomaly_state(
+                component_id=event.component_id,
+                anomaly_type=event.anomaly_type,
+                occurrence_count=1,
+                last_reading_id=event.reading_id,
+            )
+            return
+
+        new_occurrence_count = anomaly_state.occurrence_count + 1
+
+        # No alert yet: keep tracking recurrence until threshold is reached
+        if anomaly_state.alert_id is None:
+            if not should_create_alert(new_occurrence_count):
+                update_anomaly_state(
+                    component_id=event.component_id,
+                    anomaly_type=event.anomaly_type,
+                    occurrence_count=new_occurrence_count,
+                    last_reading_id=event.reading_id,
+                    alert_id=None,
+                )
+                return
+
+            alert_id = str(uuid.uuid4())
+            severity = calculate_severity(new_occurrence_count)
+            message = build_alert_message(event.anomaly_type, event.value)
+
+            create_alert(
+                alert_id=alert_id,
+                component_id=event.component_id,
+                reading_id=event.reading_id,
+                anomaly_type=event.anomaly_type,
+                severity=severity,
+                occurrence_count=new_occurrence_count,
+                message=message,
+            )
+
+            update_anomaly_state(
+                component_id=event.component_id,
+                anomaly_type=event.anomaly_type,
+                occurrence_count=new_occurrence_count,
+                last_reading_id=event.reading_id,
+                alert_id=alert_id,
+            )
+
+            event_bus.publish(
+                AlertCreated(
+                    alert_id=alert_id,
+                    component_id=event.component_id,
+                    reading_id=event.reading_id,
+                    severity=severity,
+                )
+            )
+            return
+
+        # Alert already exists: update it and publish severity change if needed
+        current_alert = get_alert_by_id(anomaly_state.alert_id)
+
+        if current_alert is None:
+            return
+
+        new_severity = calculate_severity(new_occurrence_count)
+        message = build_alert_message(event.anomaly_type, event.value)
+        severity_changed = current_alert.severity != new_severity
+
+        update_alert_details(
+            alert_id=current_alert.id,
+            reading_id=event.reading_id,
+            severity=new_severity,
+            occurrence_count=new_occurrence_count,
+            message=message,
+        )
+
+        update_anomaly_state(
+            component_id=event.component_id,
+            anomaly_type=event.anomaly_type,
+            occurrence_count=new_occurrence_count,
+            last_reading_id=event.reading_id,
+            alert_id=current_alert.id,
+        )
+
+        if severity_changed:
+            event_bus.publish(
+                AlertSeverityChanged(
+                    alert_id=current_alert.id,
+                    component_id=current_alert.component_id,
+                    reading_id=event.reading_id,
+                    severity=new_severity,
+                )
+            )
+
+    def register_event_handlers(self) -> None:
+        event_bus.subscribe(AnomalyDetected, self.handle_anomaly_detected)
+
     def get_alert_views(self) -> list[AlertView]:
         alerts = self.load_alerts()
-
         views = []
 
         for alert in alerts:
@@ -45,14 +165,13 @@ class AlertService:
             )
 
         return views
-    
+
     def get_alert_views_by_node(self, node_id: str) -> list[AlertView]:
         component_ids = self.hierarchy_service.get_component_ids_in_subtree(
             node_id
         )
 
         alerts = self.load_alerts()
-
         views = []
 
         for alert in alerts:

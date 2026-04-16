@@ -1,38 +1,40 @@
-import uuid
-
-from app.alerts.repository import create_alert, exists_open_alert_for_component
 from app.hierarchy.service import HierarchyService
-from app.processing.rules import build_alert_message, is_anomalous
-from app.readings.repository import load_latest_readings_by_component
+from app.processing.rules import get_anomaly_type
+from app.readings.repository import load_reading_by_id
+from app.shared.event_bus import event_bus
+from app.shared.events import AnomalyDetected, ReadingRecorded
+
 
 class ProcessingService:
+    """Application service for evaluating recorded readings and publishing anomalies."""
+
     def __init__(self) -> None:
         self.hierarchy_service = HierarchyService()
 
-    def process_latest_readings(self) -> None:
-        components = self.hierarchy_service.load_components()
-        components_by_id = {component.id: component for component in components}
+    def handle_reading_recorded(self, event: ReadingRecorded) -> None:
+        reading = load_reading_by_id(event.reading_id)
 
-        latest_readings = load_latest_readings_by_component()
+        if reading is None:
+            return
 
-        for reading in latest_readings:
-            component = components_by_id.get(reading.component_id)
+        component = self.hierarchy_service.get_component_by_id(reading.component_id)
 
-            if component is None:
-                continue
+        if component is None:
+            return
 
-            if not is_anomalous(component.sensor_type, reading):
-                continue
+        anomaly_type = get_anomaly_type(component.sensor_type, reading)
 
-            # NEW: prevent duplicates
-            if exists_open_alert_for_component(component.id):
-                continue
+        if anomaly_type is None:
+            return
 
-            message = build_alert_message(component.sensor_type, reading)
-
-            create_alert(
-                alert_id=str(uuid.uuid4()),
+        event_bus.publish(
+            AnomalyDetected(
                 component_id=component.id,
                 reading_id=reading.id,
-                message=message,
+                anomaly_type=anomaly_type,
+                value=reading.value,
             )
+        )
+
+    def register_event_handlers(self) -> None:
+        event_bus.subscribe(ReadingRecorded, self.handle_reading_recorded)
