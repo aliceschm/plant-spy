@@ -60,6 +60,24 @@ flowchart LR
 
 ```
 ---
+
+## Next Steps
+
+The current version uses an in-memory EventBus to keep the architecture simple and demonstrate the event-driven flow inside a modular monolith.
+
+Planned improvements:
+
+- Replace the internal EventBus interface with Kafka
+- Simulate a higher volume of sensor readings and domain events
+- Measure how the system behaves under a larger event load
+- Move anomaly processing to Spark for heavier batch or streaming workloads
+- Compare the simple in-memory implementation with a more scalable event-processing architecture
+
+The goal is to evolve the project from a local event-driven simulation into a more realistic industrial monitoring pipeline capable of handling larger volumes of readings and alerts.
+
+---
+
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
